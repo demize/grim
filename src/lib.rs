@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate bitflags;
+
 pub mod ewfargs {
     pub enum NumSectors {
         Sectors16 = -2,
@@ -21,10 +24,12 @@ pub mod ewfargs {
         Best,
     }
 
-    pub enum DigestType {
-        MD5 = 0, // mandatory
-        SHA1 = (1 << 0),
-        SHA512 = (1 << 1),
+    bitflags! {
+        pub struct DigestType: u8 {
+            const MD5 = 0; // mandatory
+            const SHA1 = (1 << 0);
+            const SHA512 = (1 << 1);
+        }
     }
 
     pub enum EwfFormat {
@@ -41,20 +46,35 @@ pub mod ewfargs {
         EwfX,
     }
 
+    /// Stores arguments to pass to ewfacquirestream.
     pub struct ArgsList {
+        /// The device to image.
         pub source_device: Option<String>,
-        pub num_sectors: Option<NumSectors>,
-        pub compression_type: Option<CompressionType>,
+        /// The number of sectors to read at once.
+        pub num_sectors: NumSectors,
+        /// The type of compression to use.
+        pub compression_type: CompressionType,
+        /// The case number.
         pub case_number: Option<String>,
-        pub digest_type: Option<DigestType>,
+        /// Which digests to calculate (MD5 is required).
+        pub digest_type: DigestType,
+        /// The description of the evidence.
         pub description: Option<String>,
+        /// The examiner's name.
         pub examiner_name: Option<String>,
+        /// The evidence number for the evidence being imaged.
         pub evidence_number: Option<String>,
-        pub ewf_format: Option<EwfFormat>,
+        /// Which file format to use for the images.
+        pub ewf_format: EwfFormat,
+        /// Notes about the evidence.
         pub notes: Option<String>,
+        /// How many bytes are in a sector.
         pub bytes_per_sector: Option<i32>,
+        /// How large to make segments for segmented image files.
         pub segment_file_size: Option<String>,
+        /// The path to the target.
         pub target: Option<String>,
+        /// The path to the seconday target.
         pub secondary_target: Option<String>,
     }
 
@@ -62,14 +82,14 @@ pub mod ewfargs {
         pub fn new() -> ArgsList {
             ArgsList {
                 source_device: None,
-                num_sectors: None,
-                compression_type: None,
+                num_sectors: NumSectors::Sectors64,
+                compression_type: CompressionType::None,
                 case_number: None,
-                digest_type: None,
+                digest_type: DigestType::MD5,
                 description: None,
                 examiner_name: None,
                 evidence_number: None,
-                ewf_format: None,
+                ewf_format: EwfFormat::Encase6,
                 notes: None,
                 bytes_per_sector: None,
                 segment_file_size: None,

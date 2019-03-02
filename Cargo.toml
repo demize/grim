@@ -5,6 +5,7 @@ authors = ["demize"]
 edition = "2018"
 
 [dependencies]
+bitflags = "1.0"
 
 [dependencies.cursive]
 version = "0.10"

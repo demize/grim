@@ -1,5 +1,5 @@
 use cursive::traits::Identifiable;
-use cursive::views::{Dialog, EditView, LinearLayout};
+use cursive::views::{Dialog, EditView, LinearLayout, SelectView};
 use cursive::Cursive;
 use std::cell::RefCell;
 
@@ -12,6 +12,7 @@ enum ExtractionError {
     Blank,
 }
 
+/// Return a Dialog containing an Edit view, with the ID and title both set to `name`. Please use this to generate all text inputs, as it makes the code much cleaner.
 fn new_entry_box(name: &str, max_size: usize, default: &Option<String>) -> Dialog {
     match default {
         None => Dialog::around(EditView::new().max_content_width(max_size).with_id(name)),
@@ -25,6 +26,21 @@ fn new_entry_box(name: &str, max_size: usize, default: &Option<String>) -> Dialo
     .title(name)
 }
 
+/// Extract the information from the field with the given ID into the Option specified. Displays an infobox when it encounters an empty input.
+///
+/// # Arguments
+///
+/// * `s` - A mutable reference to the `Cursive` instance to display on.
+/// * `from` - The ID of the field to extract from.
+/// * `to` - A mutable reference to the Option to extract the field into.
+///
+/// # Return values
+///
+/// Returns an empty result if the field was extracted successfully, or `ExtractionError::Blank` if the field was blank.
+///
+/// # Panics
+///
+/// Panics when the field cannot be found.
 fn extract_field_required(
     s: &mut Cursive,
     from: &str,
@@ -43,6 +59,17 @@ fn extract_field_required(
     }
 }
 
+/// Extract the information from the field with the given ID into the Option specified.
+///
+/// # Arguments
+///
+/// * `s` - A mutable reference to the `Cursive` instance to display on.
+/// * `from` - The ID of the field to extract from.
+/// * `to` - A mutable reference to the Option to extract the field into.
+///
+/// # Panics
+///
+/// Panics when the field cannot be found.
 fn extract_field_optional(s: &mut Cursive, from: &str, to: &mut Option<String>) {
     match s.call_on_id(from, |view: &mut EditView| view.get_content()) {
         Some(ref value) if !(*value).is_empty() => {
@@ -55,6 +82,58 @@ fn extract_field_optional(s: &mut Cursive, from: &str, to: &mut Option<String>) 
     }
 }
 
+/// Display the main menu, and bring the user to the option they choose. Displays options for imaging a hard drive, editing settings, and exiting the program.
+///
+/// # Arguments
+///
+/// * `s` - A mutable reference to the `Cursive` instance to display on.
+///
+/// # Buttons
+///
+/// * "Image" - Start the flow to image a hard drive by running `examiner_info`.
+/// * "Options" - Start the flow to edit the application options; currently unimplemented.
+/// * "Exit" - Exit the application.
+pub fn main_menu(s: &mut Cursive) {
+    /// Describes possible options for the user to choose in the menu.
+    enum MenuOptions {
+        Image,
+        Settings,
+        Exit,
+    }
+    /// Callback for when the user selects an option.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - A mutable reference to the `Cursive` instance to display on.
+    /// * `selection` - A reference to a `MenuOptions` value describing the user's selection.
+    fn on_submit(s: &mut Cursive, selection: &MenuOptions) {
+        match selection {
+            MenuOptions::Image => examiner_info(s),
+            MenuOptions::Settings => (), // Settings page to come later
+            MenuOptions::Exit => s.quit(),
+        }
+    }
+
+    s.pop_layer();
+
+    let mut select = SelectView::new().on_submit(on_submit);
+
+    select.add_item("Image:    Image a hard drive", MenuOptions::Image);
+    select.add_item("Settings: (unavailable)", MenuOptions::Settings);
+    select.add_item("Exit:     Exit grim", MenuOptions::Exit);
+
+    s.add_layer(Dialog::around(select).title(format!("grim {}", env!("CARGO_PKG_VERSION"))));
+}
+
+/// Display the form for entering examiner and case information.
+///
+/// # Arguments
+///
+/// * `s` - A mutable reference to the `Cursive` instance to display on.
+///
+/// # Buttons
+///
+/// * "Next" - Move on to the information required by libewf by calling `required_info`.
 pub fn examiner_info(s: &mut Cursive) {
     s.pop_layer();
 
@@ -100,6 +179,16 @@ pub fn examiner_info(s: &mut Cursive) {
     );
 }
 
+/// Display the form for entering information required by libewf.
+///
+/// # Arguments
+///
+/// * `s` - A mutable reference to the `Cursive` instance to display on.
+///
+/// # Buttons
+///
+/// * "Next" - Currently not implemented.
+/// * "Back" - Return to the examiner information form.
 pub fn required_info(s: &mut Cursive) {
     s.pop_layer();
     s.add_layer(
