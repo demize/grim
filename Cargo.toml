@@ -1,7 +1,15 @@
 [package]
 name = "grim-rust"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["demize"]
 edition = "2018"
 
 [dependencies]
+
+[dependencies.cursive]
+version = "0.10"
+features = ["termion-backend"]
+
+[[bin]]
+name = "grim"
+path = "src/grim/main.rs"
