@@ -1,12 +1,25 @@
 use cursive::views::Dialog;
 use cursive::Cursive;
+use users;
 
 mod windows;
 
 fn main() {
     let mut siv = Cursive::default();
+    let effective_uid = users::get_effective_uid();
 
-    welcome(&mut siv);
+    if effective_uid != 0 {
+        siv.add_layer(
+            Dialog::text("WARNING: You are not root!\nThis program may not work as expected.")
+                .title("Warning")
+                .button("Ok", |s| {
+                    s.pop_layer();
+                    welcome(s);
+                }),
+        );
+    } else {
+        welcome(&mut siv);
+    }
 
     siv.run();
 }

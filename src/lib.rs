@@ -1,7 +1,26 @@
 #[macro_use]
 extern crate bitflags;
 
+pub mod sysinfo;
+
+pub struct LoggingInfo {
+    pub host_serial: Option<String>,
+    pub drive_serial: Option<String>,
+    pub drive_product: Option<String>,
+}
+
+impl LoggingInfo {
+    pub fn new() -> LoggingInfo {
+        LoggingInfo {
+            host_serial: None,
+            drive_serial: None,
+            drive_product: None,
+        }
+    }
+}
+
 pub mod ewfargs {
+    #[derive(Copy, Clone)]
     pub enum NumSectors {
         Sectors16 = -2,
         Sectors32,
@@ -17,6 +36,7 @@ pub mod ewfargs {
         Sectors32768,
     }
 
+    #[derive(Copy, Clone)]
     pub enum CompressionType {
         None = 0, // default
         EmptyBlock,
@@ -32,6 +52,7 @@ pub mod ewfargs {
         }
     }
 
+    #[derive(Copy, Clone)]
     pub enum EwfFormat {
         FTK = -5,
         Encase2,
@@ -47,6 +68,7 @@ pub mod ewfargs {
     }
 
     /// Stores arguments to pass to ewfacquirestream.
+    #[derive(Clone)]
     pub struct ArgsList {
         /// The device to image.
         pub source_device: Option<String>,
@@ -79,6 +101,7 @@ pub mod ewfargs {
     }
 
     impl ArgsList {
+        /// Returns a new `ArgsList` with all default options.
         pub fn new() -> ArgsList {
             ArgsList {
                 source_device: None,
