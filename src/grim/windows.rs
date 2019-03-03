@@ -1,11 +1,14 @@
 use cursive::traits::Identifiable;
-use cursive::views::{Dialog, EditView, LinearLayout, SelectView};
+use cursive::view::{Boxable, Scrollable};
+use cursive::views::{Dialog, EditView, IdView, LinearLayout, Panel, SelectView};
 use cursive::Cursive;
+
 use pretty_bytes::converter::convert as format_bytes;
 use std::cell::RefCell;
 use std::thread;
 
 extern crate grim_rust;
+use grim_rust::ewfargs;
 use grim_rust::ewfargs::ArgsList;
 use grim_rust::sysinfo;
 use grim_rust::LoggingInfo;
@@ -20,10 +23,10 @@ enum ExtractionError {
 }
 
 /// Return a Dialog containing an Edit view, with the ID and title both set to `name`. Please use this to generate all text inputs, as it makes the code much cleaner.
-fn new_entry_box(name: &str, max_size: usize, default: &Option<String>) -> Dialog {
+fn new_entry_box(name: &str, max_size: usize, default: &Option<String>) -> Panel<IdView<EditView>> {
     match default {
-        None => Dialog::around(EditView::new().max_content_width(max_size).with_id(name)),
-        Some(content) => Dialog::around(
+        None => Panel::new(EditView::new().max_content_width(max_size).with_id(name)),
+        Some(content) => Panel::new(
             EditView::new()
                 .max_content_width(max_size)
                 .content(content.clone())
@@ -131,7 +134,7 @@ pub fn main_menu(s: &mut Cursive) {
 
     s.pop_layer();
 
-    let mut select = SelectView::new().on_submit(on_submit);
+    let mut select = SelectView::<MenuOptions>::new().on_submit(on_submit);
 
     select.add_item("Image:    Image a hard drive", MenuOptions::Image);
     select.add_item("Settings: (unavailable)", MenuOptions::Settings);
@@ -217,7 +220,7 @@ pub fn select_source(s: &mut Cursive) {
                     );
                     return;
                 }
-                let mut select = SelectView::new().on_submit(on_submit);
+                let mut select = SelectView::<sysinfo::HdInfo>::new().on_submit(on_submit);
 
                 for disk in disks {
                     select.add_item(disk.0, disk.1);
@@ -296,9 +299,27 @@ pub fn examiner_info(s: &mut Cursive) {
 /// * "Back" - Return to the examiner information form.
 pub fn required_info(s: &mut Cursive) {
     s.pop_layer();
+
+    let num_sectors_select = SelectView::<ewfargs::NumSectors>::new()
+        .item("16 Bytes", ewfargs::NumSectors::Sectors16)
+        .item("32 Bytes", ewfargs::NumSectors::Sectors32)
+        .item("64 Bytes", ewfargs::NumSectors::Sectors64)
+        .item("128 Bytes", ewfargs::NumSectors::Sectors128)
+        .item("256 Bytes", ewfargs::NumSectors::Sectors256)
+        .item("512 Bytes", ewfargs::NumSectors::Sectors512)
+        .item("1 Kilobyte", ewfargs::NumSectors::Sectors1024)
+        .item("2 Kilobytes", ewfargs::NumSectors::Sectors2048)
+        .item("4 Kilobytes", ewfargs::NumSectors::Sectors4096)
+        .item("8 Kilobytes", ewfargs::NumSectors::Sectors8192)
+        .item("16 Kilobytes", ewfargs::NumSectors::Sectors16384)
+        .item("32 Kilobytes", ewfargs::NumSectors::Sectors32768)
+        .scrollable()
+        .max_height(5);
+
     s.add_layer(
-        Dialog::text("Not implemented!")
-            .title("Required Information")
-            .button("Back", examiner_info),
+        Dialog::around(Panel::new(num_sectors_select).title("Bytes per Sector"))
+            .title("Required information")
+            .button("Back", examiner_info)
+            .button("Next", |_| ()),
     );
 }
