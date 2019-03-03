@@ -3,6 +3,7 @@ extern crate bitflags;
 
 pub mod sysinfo;
 
+#[derive(Default)]
 pub struct LoggingInfo {
     pub host_serial: Option<String>,
     pub drive_serial: Option<String>,
@@ -11,11 +12,7 @@ pub struct LoggingInfo {
 
 impl LoggingInfo {
     pub fn new() -> LoggingInfo {
-        LoggingInfo {
-            host_serial: None,
-            drive_serial: None,
-            drive_product: None,
-        }
+        Default::default()
     }
 }
 
@@ -36,6 +33,12 @@ pub mod ewfargs {
         Sectors32768,
     }
 
+    impl Default for NumSectors {
+        fn default() -> Self {
+            NumSectors::Sectors64
+        }
+    }
+
     #[derive(Copy, Clone)]
     pub enum CompressionType {
         None = 0, // default
@@ -44,10 +47,17 @@ pub mod ewfargs {
         Best,
     }
 
+    impl Default for CompressionType {
+        fn default() -> Self {
+            CompressionType::None
+        }
+    }
+
     bitflags! {
+        #[derive(Default)]
         pub struct DigestType: u8 {
             const MD5 = 0; // mandatory
-            const SHA1 = (1 << 0);
+            const SHA1 = 1; // 1 << 0
             const SHA512 = (1 << 1);
         }
     }
@@ -67,8 +77,14 @@ pub mod ewfargs {
         EwfX,
     }
 
+    impl Default for EwfFormat {
+        fn default() -> Self {
+            EwfFormat::Encase6
+        }
+    }
+
     /// Stores arguments to pass to ewfacquirestream.
-    #[derive(Clone)]
+    #[derive(Clone, Default)]
     pub struct ArgsList {
         /// The device to image.
         pub source_device: Option<String>,

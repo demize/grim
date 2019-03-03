@@ -140,6 +140,16 @@ pub fn main_menu(s: &mut Cursive) {
     s.add_layer(Dialog::around(select).title(format!("grim {}", env!("CARGO_PKG_VERSION"))));
 }
 
+/// Display the form for selecting a drive to image.
+///
+/// # Arguments
+///
+/// * `s` - A mutable reference to the `Cursive` instance to display on.
+///
+/// # Buttons
+///
+/// * "Cancel" - Return to the main menu.
+/// * Submit the select view to continue to the examiner information form.
 pub fn select_source(s: &mut Cursive) {
     fn on_submit(s: &mut Cursive, selection: &sysinfo::HdInfo) {
         INFO.with(|info| {
@@ -154,11 +164,16 @@ pub fn select_source(s: &mut Cursive) {
         examiner_info(s);
     }
 
+    // We want to display a message while getting the list of hard drives, which
+    // might take a while
     s.pop_layer();
     s.add_layer(Dialog::text("Getting list of hard drives, please wait..."));
 
-    let cb_sink = s.cb_sink().clone();
+    // The message won't display until this function returns, however;
+    // to work around that, we need to spawn a thread and get the list
+    // of hard drives from inside it.
 
+    let cb_sink = s.cb_sink().clone();
     thread::spawn(move || {
         let list = sysinfo::get_all_disks();
         if let Err(e) = list {
@@ -180,12 +195,11 @@ pub fn select_source(s: &mut Cursive) {
         let mut disks = Vec::<(String, sysinfo::HdInfo)>::new();
 
         for disk in list.unwrap() {
-            let size: String;
-            if disk.units == "bytes" {
-                size = format_bytes(disk.size);
+            let size = if disk.units == "bytes" {
+                format_bytes(disk.size)
             } else {
-                size = format!("{} {}", disk.size, disk.units);
-            }
+                format!("{} {}", disk.size, disk.units)
+            };
 
             let display_string = format!("{} {} ({})", size, disk.product, disk.logical_name);
 
@@ -194,7 +208,7 @@ pub fn select_source(s: &mut Cursive) {
 
         cb_sink
             .send(Box::new(move |s: &mut Cursive| {
-                if disks.len() == 0 {
+                if disks.is_empty() {
                     s.pop_layer();
                     s.add_layer(
                         Dialog::text("ERROR: No disks found! Are you running as root?")
@@ -248,26 +262,21 @@ pub fn examiner_info(s: &mut Cursive) {
             .title("Examiner information")
             .button("Back", select_source)
             .button("Next", |s| {
-                if !ARGS.with(|args| -> bool {
+                let success = ARGS.with(|args| -> bool {
                     let mut args = args.borrow_mut();
-                    if let Err(_) =
-                        extract_field_required(s, "Examiner Name", &mut args.examiner_name)
-                    {
-                        return false;
-                    };
-                    if let Err(_) = extract_field_required(s, "Case Number", &mut args.case_number)
-                    {
-                        return false;
-                    }
-                    if let Err(_) =
-                        extract_field_required(s, "Evidence Number", &mut args.evidence_number)
+                    if extract_field_required(s, "Examiner Name", &mut args.examiner_name).is_err()
+                        || extract_field_required(s, "Case Number", &mut args.case_number).is_err()
+                        || extract_field_required(s, "Evidence Number", &mut args.evidence_number)
+                            .is_err()
                     {
                         return false;
                     }
                     extract_field_optional(s, "Description", &mut args.description);
                     extract_field_optional(s, "Notes", &mut args.notes);
-                    return true;
-                }) {
+                    true
+                });
+
+                if !success {
                     return;
                 };
                 required_info(s);
