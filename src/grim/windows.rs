@@ -1,11 +1,19 @@
 use cursive::traits::Identifiable;
-use cursive::view::{Boxable, Scrollable};
-use cursive::views::{Dialog, EditView, IdView, LinearLayout, Panel, SelectView};
+use cursive::view::Boxable;
+use cursive::views::{
+    BoxView, Checkbox, Dialog, EditView, IdView, LinearLayout, ListView, Panel, SelectView,
+    TextView,
+};
 use cursive::Cursive;
 
 use pretty_bytes::converter::convert as format_bytes;
 use std::cell::RefCell;
 use std::thread;
+
+// For now, we just use this to validate the input
+// It isn't guaranteed to stop ewfacquirestream from crashing, but it should help
+// Maybe eventually we'll pass the size in bytes rather than just the user's input?
+use convert_byte_size_string::convert_to_bytes;
 
 extern crate grim_rust;
 use grim_rust::ewfargs;
@@ -13,45 +21,60 @@ use grim_rust::ewfargs::ArgsList;
 use grim_rust::sysinfo;
 use grim_rust::LoggingInfo;
 
+// Some things need to both be mutable and available to all our forms, so thread
+// local storage is the ideal solution
 thread_local! {
     static ARGS: RefCell<ArgsList> = RefCell::new(ArgsList::new());
     static INFO: RefCell<LoggingInfo> = RefCell::new(LoggingInfo::new());
 }
 
+// This could be expanded later, but for now is just used when the field is blank
 enum ExtractionError {
     Blank,
 }
 
-/// Return a Dialog containing an Edit view, with the ID and title both set to `name`. Please use this to generate all text inputs, as it makes the code much cleaner.
-fn new_entry_box(name: &str, max_size: usize, default: &Option<String>) -> Panel<IdView<EditView>> {
+/// Return an IdView containing an Edit view, with the ID `name`.
+/// Please use this to generate all text inputs, as it makes the code much cleaner.
+fn new_entry_box<F>(
+    name: &str,
+    max_size: usize,
+    default: &Option<String>,
+    next: F,
+) -> BoxView<IdView<EditView>>
+where
+    F: Fn(&mut Cursive, &str) + 'static,
+{
     match default {
-        None => Panel::new(EditView::new().max_content_width(max_size).with_id(name)),
-        Some(content) => Panel::new(
-            EditView::new()
-                .max_content_width(max_size)
-                .content(content.clone())
-                .with_id(name),
-        ),
+        None => EditView::new()
+            .on_submit(next)
+            .max_content_width(max_size)
+            .with_id(name)
+            .min_width(45),
+        Some(content) => EditView::new()
+            .on_submit(next)
+            .max_content_width(max_size)
+            .content(content.clone())
+            .with_id(name)
+            .min_width(45),
     }
-    .title(name)
 }
 
-/// Extract the information from the field with the given ID into the Option specified. Displays an infobox when it encounters an empty input.
+/// Extract the information from the entry box with the given ID into the Option specified. Displays an infobox when it encounters an empty input.
 ///
 /// # Arguments
 ///
 /// * `s` - A mutable reference to the `Cursive` instance to display on.
-/// * `from` - The ID of the field to extract from.
-/// * `to` - A mutable reference to the Option to extract the field into.
+/// * `from` - The ID of the entry box to extract from.
+/// * `to` - A mutable reference to the Option to extract the text from the entry box into.
 ///
 /// # Return values
 ///
-/// Returns an empty result if the field was extracted successfully, or `ExtractionError::Blank` if the field was blank.
+/// Returns an empty result if the entry box was extracted successfully, or `ExtractionError::Blank` if the field was blank.
 ///
 /// # Panics
 ///
-/// Panics when the field cannot be found.
-fn extract_field_required(
+/// Panics when the entry box cannot be found.
+fn extract_entrybox_required(
     s: &mut Cursive,
     from: &str,
     to: &mut Option<String>,
@@ -69,18 +92,18 @@ fn extract_field_required(
     }
 }
 
-/// Extract the information from the field with the given ID into the Option specified.
+/// Extract the information from the entry box with the given ID into the Option specified.
 ///
 /// # Arguments
 ///
 /// * `s` - A mutable reference to the `Cursive` instance to display on.
-/// * `from` - The ID of the field to extract from.
-/// * `to` - A mutable reference to the Option to extract the field into.
+/// * `from` - The ID of the entry box to extract from.
+/// * `to` - A mutable reference to the Option to extract the text from the entry box into.
 ///
 /// # Panics
 ///
-/// Panics when the field cannot be found.
-fn extract_field_optional(s: &mut Cursive, from: &str, to: &mut Option<String>) {
+/// Panics when the entry box cannot be found.
+fn extract_entrybox_optional(s: &mut Cursive, from: &str, to: &mut Option<String>) {
     match s.call_on_id(from, |view: &mut EditView| view.get_content()) {
         Some(ref value) if !(*value).is_empty() => {
             to.replace((**value).clone());
@@ -237,6 +260,27 @@ pub fn select_source(s: &mut Cursive) {
     });
 }
 
+/// Submit the examiner info form
+fn examiner_info_next(s: &mut Cursive, _: &str) {
+    let success = ARGS.with(|args| -> bool {
+        let mut args = args.borrow_mut();
+        if extract_entrybox_required(s, "Examiner Name", &mut args.examiner_name).is_err()
+            || extract_entrybox_required(s, "Case Number", &mut args.case_number).is_err()
+            || extract_entrybox_required(s, "Evidence Number", &mut args.evidence_number).is_err()
+        {
+            return false;
+        }
+        extract_entrybox_optional(s, "Description", &mut args.description);
+        extract_entrybox_optional(s, "Notes", &mut args.notes);
+        true
+    });
+
+    if !success {
+        return;
+    };
+    target_info(s);
+}
+
 /// Display the form for entering examiner and case information.
 ///
 /// # Arguments
@@ -245,18 +289,44 @@ pub fn select_source(s: &mut Cursive) {
 ///
 /// # Buttons
 ///
+/// * "Back" - Return to the source selection form.
 /// * "Next" - Move on to the information required by libewf by calling `required_info`.
 pub fn examiner_info(s: &mut Cursive) {
     s.pop_layer();
 
     let fields = ARGS.with(|args| {
         let args = args.borrow();
-        LinearLayout::vertical()
-            .child(new_entry_box("Examiner Name", 256, &args.examiner_name))
-            .child(new_entry_box("Case Number", 256, &args.case_number))
-            .child(new_entry_box("Evidence Number", 256, &args.evidence_number))
-            .child(new_entry_box("Description", 256, &args.description))
-            .child(new_entry_box("Notes", 1024, &args.notes))
+        ListView::new()
+            .child(
+                "Examiner Name",
+                new_entry_box(
+                    "Examiner Name",
+                    256,
+                    &args.examiner_name,
+                    examiner_info_next,
+                ),
+            )
+            .child(
+                "Case Number",
+                new_entry_box("Case Number", 256, &args.case_number, examiner_info_next),
+            )
+            .child(
+                "Evidence Number",
+                new_entry_box(
+                    "Evidence Number",
+                    256,
+                    &args.evidence_number,
+                    examiner_info_next,
+                ),
+            )
+            .child(
+                "Description",
+                new_entry_box("Description", 256, &args.description, examiner_info_next),
+            )
+            .child(
+                "Notes",
+                new_entry_box("Notes", 1024, &args.notes, examiner_info_next),
+            )
     });
 
     s.add_layer(
@@ -264,27 +334,235 @@ pub fn examiner_info(s: &mut Cursive) {
             .padding((1, 1, 1, 0))
             .title("Examiner information")
             .button("Back", select_source)
-            .button("Next", |s| {
-                let success = ARGS.with(|args| -> bool {
-                    let mut args = args.borrow_mut();
-                    if extract_field_required(s, "Examiner Name", &mut args.examiner_name).is_err()
-                        || extract_field_required(s, "Case Number", &mut args.case_number).is_err()
-                        || extract_field_required(s, "Evidence Number", &mut args.evidence_number)
-                            .is_err()
-                    {
-                        return false;
-                    }
-                    extract_field_optional(s, "Description", &mut args.description);
-                    extract_field_optional(s, "Notes", &mut args.notes);
-                    true
-                });
-
-                if !success {
-                    return;
-                };
-                required_info(s);
-            }),
+            .button("Next", |s| examiner_info_next(s, "")),
     );
+}
+
+/// Submit the target info form
+fn target_info_next(s: &mut Cursive) {
+    let success = ARGS.with(|args| -> bool {
+        let mut args = args.borrow_mut();
+        if extract_entrybox_required(s, "Filename", &mut args.target_filename).is_err()
+            || extract_entrybox_required(s, "Target directory", &mut args.target_dir).is_err()
+        {
+            return false;
+        }
+
+        let secondary_enabled = s
+            .call_on_id("Two copies", |view: &mut Checkbox| -> bool {
+                view.is_checked()
+            })
+            .unwrap();
+
+        if secondary_enabled {
+            if extract_entrybox_required(
+                s,
+                "Secondary target directory",
+                &mut args.secondary_target_dir,
+            )
+            .is_err()
+            {
+                return false;
+            }
+        } else {
+            args.secondary_target_dir = None;
+        }
+
+        // Extract the value from the select box
+        args.ewf_format = s
+            .call_on_id(
+                "EwfFormat",
+                |value: &mut SelectView<ewfargs::EwfFormat>| -> ewfargs::EwfFormat {
+                    *(value.selection().unwrap()).clone()
+                },
+            )
+            .unwrap();
+
+        // Extract the values from the checkboxes
+        let mut hashes = ewfargs::DigestType::MD5;
+
+        hashes |= s
+            .call_on_id("SHA1", |view: &mut Checkbox| {
+                if view.is_checked() {
+                    ewfargs::DigestType::SHA1
+                } else {
+                    ewfargs::DigestType::MD5
+                }
+            })
+            .unwrap();
+        hashes |= s
+            .call_on_id("SHA256", |view: &mut Checkbox| {
+                if view.is_checked() {
+                    ewfargs::DigestType::SHA256
+                } else {
+                    ewfargs::DigestType::MD5
+                }
+            })
+            .unwrap();
+
+        args.digest_type = hashes;
+
+        let segment = s
+            .call_on_id("Segment", |view: &mut Checkbox| view.is_checked())
+            .unwrap();
+        if segment {
+            let mut temp_size: Option<String> = None;
+            let extraction_result = extract_entrybox_required(s, "Segment size", &mut temp_size);
+            if extraction_result.is_err() {
+                return false;
+            }
+
+            let temp_size_str = temp_size.unwrap();
+
+            match convert_to_bytes(&temp_size_str) {
+                Ok(_) => args.segment_file_size = Some(temp_size_str.clone()),
+                Err(_) => {
+                    s.add_layer(Dialog::info("Invalid value for segment size"));
+                    return false;
+                }
+            }
+        } else {
+            args.segment_file_size = None;
+        }
+
+        true
+    });
+    if success {
+        required_info(s);
+    }
+}
+
+/// Display the form for entering information about the target.
+///
+/// /// # Arguments
+///
+/// * `s` - A mutable reference to the `Cursive` instance to display on.
+///
+/// # Buttons
+///
+/// * "Next" - Continues to the required information form.
+/// * "Back" - Returns to the examiner informaitn form.
+pub fn target_info(s: &mut Cursive) {
+    s.pop_layer();
+
+    let mut two_copies = false;
+    let mut segment = false;
+    let fields = ARGS.with(|args| {
+        let args = args.borrow();
+
+        two_copies = args.secondary_target_dir.is_some();
+        segment = args.segment_file_size.is_some();
+
+        let ewf_select = SelectView::<ewfargs::EwfFormat>::new()
+            .popup()
+            .item("FTK", ewfargs::EwfFormat::FTK)
+            .item("Encase2", ewfargs::EwfFormat::Encase2)
+            .item("Encase3", ewfargs::EwfFormat::Encase3)
+            .item("Encase4", ewfargs::EwfFormat::Encase4)
+            .item("Encase5", ewfargs::EwfFormat::Encase5)
+            .item("Encase6", ewfargs::EwfFormat::Encase6)
+            .item("Encase7", ewfargs::EwfFormat::Encase7)
+            .item("Linen5", ewfargs::EwfFormat::Linen5)
+            .item("Linen6", ewfargs::EwfFormat::Linen6)
+            .item("Linen7", ewfargs::EwfFormat::Linen7)
+            .item("EwfX", ewfargs::EwfFormat::EwfX)
+            .selected(args.ewf_format as usize)
+            .with_id("EwfFormat");
+
+        let mut sha1_box = Checkbox::new();
+        let mut sha256_box = Checkbox::new();
+
+        // Check the boxes for any digests that are already specified in args
+        if (args.digest_type & (ewfargs::DigestType::SHA1)) == ewfargs::DigestType::SHA1 {
+            sha1_box = sha1_box.checked();
+        }
+        if (args.digest_type & (ewfargs::DigestType::SHA256)) == ewfargs::DigestType::SHA256 {
+            sha256_box = sha256_box.checked();
+        }
+
+        let hash_boxes = LinearLayout::horizontal()
+            .child(Checkbox::new().checked().disabled())
+            .child(TextView::new("MD5 (required) "))
+            .child(sha1_box.with_id("SHA1"))
+            .child(TextView::new("SHA1   "))
+            .child(sha256_box.with_id("SHA256"))
+            .child(TextView::new("SHA256"));
+
+        ListView::new()
+            .child(
+                "Filename (no extension)",
+                new_entry_box("Filename", 255, &args.target_filename, |s, _| {
+                    target_info_next(s)
+                }),
+            )
+            .child(
+                "Target directory",
+                new_entry_box("Target directory", 255, &args.target_dir, |s, _| {
+                    target_info_next(s)
+                }),
+            )
+            .child(
+                "Make two copies?",
+                Checkbox::new()
+                    .on_change(|s, checked| {
+                        s.call_on_id("Secondary target directory", |view: &mut EditView| {
+                            view.set_enabled(checked)
+                        });
+                    })
+                    .with_id("Two copies"),
+            )
+            .child(
+                "Secondary target directory",
+                new_entry_box(
+                    "Secondary target directory",
+                    255,
+                    &args.secondary_target_dir,
+                    |s, _| target_info_next(s),
+                ),
+            )
+            .child(
+                "Split image into segments?",
+                Checkbox::new()
+                    .on_change(|s, checked| {
+                        s.call_on_id("Segment size", |view: &mut EditView| {
+                            view.set_enabled(checked)
+                        });
+                    })
+                    .with_id("Segment"),
+            )
+            .child(
+                "Segment size",
+                new_entry_box("Segment size", 255, &args.segment_file_size, |s, _| {
+                    target_info_next(s)
+                }),
+            )
+            .child("Target File Format", ewf_select)
+            .child("Generate hashes", hash_boxes)
+    });
+    s.add_layer(
+        Dialog::around(fields)
+            .button("Back", examiner_info)
+            .button("Next", target_info_next)
+            .title("Target information"),
+    );
+
+    // Set the checkbox for two copies or disable the secondary entry based on the current value
+    if two_copies {
+        s.call_on_id("Two copies", |view: &mut Checkbox| view.check());
+    } else {
+        s.call_on_id("Secondary target directory", |view: &mut EditView| {
+            view.set_enabled(false)
+        });
+    }
+
+    // Likewise for segment size
+    if segment {
+        s.call_on_id("Segment", |view: &mut Checkbox| view.check());
+    } else {
+        s.call_on_id("Segment size", |view: &mut EditView| {
+            view.set_enabled(false)
+        });
+    }
 }
 
 /// Display the form for entering information required by libewf.
@@ -296,11 +574,12 @@ pub fn examiner_info(s: &mut Cursive) {
 /// # Buttons
 ///
 /// * "Next" - Currently not implemented.
-/// * "Back" - Return to the examiner information form.
+/// * "Back" - Return to the target information form.
 pub fn required_info(s: &mut Cursive) {
     s.pop_layer();
 
     let num_sectors_select = SelectView::<ewfargs::NumSectors>::new()
+        .popup()
         .item("16 Bytes", ewfargs::NumSectors::Sectors16)
         .item("32 Bytes", ewfargs::NumSectors::Sectors32)
         .item("64 Bytes", ewfargs::NumSectors::Sectors64)
@@ -313,13 +592,12 @@ pub fn required_info(s: &mut Cursive) {
         .item("8 Kilobytes", ewfargs::NumSectors::Sectors8192)
         .item("16 Kilobytes", ewfargs::NumSectors::Sectors16384)
         .item("32 Kilobytes", ewfargs::NumSectors::Sectors32768)
-        .scrollable()
-        .max_height(5);
+        .selected(ewfargs::NumSectors::default() as usize);
 
     s.add_layer(
         Dialog::around(Panel::new(num_sectors_select).title("Bytes per Sector"))
             .title("Required information")
-            .button("Back", examiner_info)
+            .button("Back", target_info)
             .button("Next", |_| ()),
     );
 }

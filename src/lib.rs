@@ -19,7 +19,7 @@ impl LoggingInfo {
 pub mod ewfargs {
     #[derive(Copy, Clone)]
     pub enum NumSectors {
-        Sectors16 = -2,
+        Sectors16,
         Sectors32,
         Sectors64, // default
         Sectors128,
@@ -41,7 +41,7 @@ pub mod ewfargs {
 
     #[derive(Copy, Clone)]
     pub enum CompressionType {
-        None = 0, // default
+        None, // default
         EmptyBlock,
         Fast,
         Best,
@@ -58,13 +58,13 @@ pub mod ewfargs {
         pub struct DigestType: u8 {
             const MD5 = 0; // mandatory
             const SHA1 = 1; // 1 << 0
-            const SHA512 = (1 << 1);
+            const SHA256 = (1 << 1);
         }
     }
 
     #[derive(Copy, Clone)]
     pub enum EwfFormat {
-        FTK = -5,
+        FTK,
         Encase2,
         Encase3,
         Encase4,
@@ -111,30 +111,17 @@ pub mod ewfargs {
         /// How large to make segments for segmented image files.
         pub segment_file_size: Option<String>,
         /// The path to the target.
-        pub target: Option<String>,
+        pub target_dir: Option<String>,
         /// The path to the seconday target.
-        pub secondary_target: Option<String>,
+        pub secondary_target_dir: Option<String>,
+        /// The filename to use for both the target and the secondary target.
+        pub target_filename: Option<String>,
     }
 
     impl ArgsList {
         /// Returns a new `ArgsList` with all default options.
         pub fn new() -> ArgsList {
-            ArgsList {
-                source_device: None,
-                num_sectors: NumSectors::Sectors64,
-                compression_type: CompressionType::None,
-                case_number: None,
-                digest_type: DigestType::MD5,
-                description: None,
-                examiner_name: None,
-                evidence_number: None,
-                ewf_format: EwfFormat::Encase6,
-                notes: None,
-                bytes_per_sector: None,
-                segment_file_size: None,
-                target: None,
-                secondary_target: None,
-            }
+            Default::default()
         }
     }
 }
