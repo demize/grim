@@ -87,35 +87,35 @@ pub mod ewfargs {
     #[derive(Clone, Default)]
     pub struct ArgsList {
         /// The device to image.
-        pub source_device: Option<String>,
+        pub source_device: Option<String>, // set in windows::select_source
         /// The number of sectors to read at once.
-        pub num_sectors: NumSectors,
+        pub num_sectors: NumSectors, // TODO
         /// The type of compression to use.
-        pub compression_type: CompressionType,
+        pub compression_type: CompressionType, // set in windows::target_info_next
         /// The case number.
-        pub case_number: Option<String>,
+        pub case_number: Option<String>, // set in windows::examiner_info_next
         /// Which digests to calculate (MD5 is required).
-        pub digest_type: DigestType,
+        pub digest_type: DigestType, // set in windows::target_info_next
         /// The description of the evidence.
-        pub description: Option<String>,
+        pub description: Option<String>, // set in windows::examiner_info_next
         /// The examiner's name.
-        pub examiner_name: Option<String>,
+        pub examiner_name: Option<String>, // set in windows::examiner_info_next
         /// The evidence number for the evidence being imaged.
-        pub evidence_number: Option<String>,
+        pub evidence_number: Option<String>, // set in windows::examiner_info_next
         /// Which file format to use for the images.
-        pub ewf_format: EwfFormat,
+        pub ewf_format: EwfFormat, // set in windows::target_info_next
         /// Notes about the evidence.
-        pub notes: Option<String>,
+        pub notes: Option<String>, // set in windows::examiner_info_next
         /// How many bytes are in a sector.
-        pub bytes_per_sector: Option<i32>,
+        pub bytes_per_sector: Option<i32>, // TODO
         /// How large to make segments for segmented image files.
-        pub segment_file_size: Option<String>,
+        pub segment_file_size: Option<String>, // set in windows::target_info_next
         /// The path to the target.
-        pub target_dir: Option<String>,
+        pub target_dir: Option<String>, // set in windows::target_info_next
         /// The path to the seconday target.
-        pub secondary_target_dir: Option<String>,
+        pub secondary_target_dir: Option<String>, // set in windows::target_info_next
         /// The filename to use for both the target and the secondary target.
-        pub target_filename: Option<String>,
+        pub target_filename: Option<String>, // set in windows::target_info_next
     }
 
     impl ArgsList {

@@ -1,8 +1,7 @@
 use cursive::traits::Identifiable;
 use cursive::view::Boxable;
 use cursive::views::{
-    BoxView, Checkbox, Dialog, EditView, IdView, LinearLayout, ListView, Panel, SelectView,
-    TextView,
+    BoxView, Checkbox, Dialog, EditView, IdView, LinearLayout, ListView, SelectView, TextView,
 };
 use cursive::Cursive;
 
@@ -290,7 +289,7 @@ fn examiner_info_next(s: &mut Cursive, _: &str) {
 /// # Buttons
 ///
 /// * "Back" - Return to the source selection form.
-/// * "Next" - Move on to the information required by libewf by calling `required_info`.
+/// * "Next" - Move on to the information required by libewf by calling `technical_options`.
 pub fn examiner_info(s: &mut Cursive) {
     s.pop_layer();
 
@@ -368,12 +367,20 @@ fn target_info_next(s: &mut Cursive) {
             args.secondary_target_dir = None;
         }
 
-        // Extract the value from the select box
+        // Extract the value from the select boxes
         args.ewf_format = s
             .call_on_id(
                 "EwfFormat",
-                |value: &mut SelectView<ewfargs::EwfFormat>| -> ewfargs::EwfFormat {
-                    *(value.selection().unwrap()).clone()
+                |view: &mut SelectView<ewfargs::EwfFormat>| -> ewfargs::EwfFormat {
+                    *(view.selection().unwrap()).clone()
+                },
+            )
+            .unwrap();
+        args.compression_type = s
+            .call_on_id(
+                "Compression type",
+                |view: &mut SelectView<ewfargs::CompressionType>| -> ewfargs::CompressionType {
+                    *(view.selection().unwrap()).clone()
                 },
             )
             .unwrap();
@@ -428,7 +435,7 @@ fn target_info_next(s: &mut Cursive) {
         true
     });
     if success {
-        required_info(s);
+        technical_options(s);
     }
 }
 
@@ -488,6 +495,15 @@ pub fn target_info(s: &mut Cursive) {
             .child(sha256_box.with_id("SHA256"))
             .child(TextView::new("SHA256"));
 
+        let compression_select = SelectView::<ewfargs::CompressionType>::new()
+            .popup()
+            .item("None", ewfargs::CompressionType::None)
+            .item("Empty Block", ewfargs::CompressionType::EmptyBlock)
+            .item("Fast", ewfargs::CompressionType::Fast)
+            .item("Best", ewfargs::CompressionType::Best)
+            .selected(args.compression_type as usize)
+            .with_id("Compression type");
+
         ListView::new()
             .child(
                 "Filename (no extension)",
@@ -538,6 +554,7 @@ pub fn target_info(s: &mut Cursive) {
             )
             .child("Target File Format", ewf_select)
             .child("Generate hashes", hash_boxes)
+            .child("Compression level", compression_select)
     });
     s.add_layer(
         Dialog::around(fields)
@@ -565,7 +582,50 @@ pub fn target_info(s: &mut Cursive) {
     }
 }
 
-/// Display the form for entering information required by libewf.
+fn technical_options_next(s: &mut Cursive) {
+    let success = ARGS.with(|args| -> bool {
+        let mut args = args.borrow_mut();
+
+        args.bytes_per_sector =
+            match s.call_on_id("Bytes per sector", |view: &mut EditView| -> Option<i32> {
+                let v = view.get_content();
+                if v.is_empty() {
+                    None
+                } else {
+                    match v.parse::<i32>() {
+                        Err(_) => None,
+                        Ok(val) => Some(val),
+                    }
+                }
+            }) {
+                None => panic!("Can't find element with ID Bytes per sector"),
+                Some(opt) if opt.is_some() => Some(opt.unwrap()),
+                Some(_) => {
+                    s.add_layer(Dialog::info("Invalid value for Bytes per sector"));
+                    return false;
+                }
+            };
+
+        // Extract num_sectors
+        args.num_sectors = s
+            .call_on_id(
+                "Sectors to read at once",
+                |value: &mut SelectView<ewfargs::NumSectors>| -> ewfargs::NumSectors {
+                    *(value.selection().unwrap()).clone()
+                },
+            )
+            .unwrap();
+
+        true
+    });
+
+    if success {
+        s.add_layer(Dialog::info("We did it!"));
+    }
+}
+
+/// Display the form for entering technical options. These will likely be left at the default,
+/// but the user should still be able to change them.
 ///
 /// # Arguments
 ///
@@ -575,28 +635,46 @@ pub fn target_info(s: &mut Cursive) {
 ///
 /// * "Next" - Currently not implemented.
 /// * "Back" - Return to the target information form.
-pub fn required_info(s: &mut Cursive) {
+fn technical_options(s: &mut Cursive) {
     s.pop_layer();
 
-    let num_sectors_select = SelectView::<ewfargs::NumSectors>::new()
-        .popup()
-        .item("16 Bytes", ewfargs::NumSectors::Sectors16)
-        .item("32 Bytes", ewfargs::NumSectors::Sectors32)
-        .item("64 Bytes", ewfargs::NumSectors::Sectors64)
-        .item("128 Bytes", ewfargs::NumSectors::Sectors128)
-        .item("256 Bytes", ewfargs::NumSectors::Sectors256)
-        .item("512 Bytes", ewfargs::NumSectors::Sectors512)
-        .item("1 Kilobyte", ewfargs::NumSectors::Sectors1024)
-        .item("2 Kilobytes", ewfargs::NumSectors::Sectors2048)
-        .item("4 Kilobytes", ewfargs::NumSectors::Sectors4096)
-        .item("8 Kilobytes", ewfargs::NumSectors::Sectors8192)
-        .item("16 Kilobytes", ewfargs::NumSectors::Sectors16384)
-        .item("32 Kilobytes", ewfargs::NumSectors::Sectors32768)
-        .selected(ewfargs::NumSectors::default() as usize);
+    let fields = ARGS.with(|args| {
+        let args = args.borrow();
+
+        let num_sectors_select = SelectView::<ewfargs::NumSectors>::new()
+            .popup()
+            .item("16 Bytes", ewfargs::NumSectors::Sectors16)
+            .item("32 Bytes", ewfargs::NumSectors::Sectors32)
+            .item("64 Bytes", ewfargs::NumSectors::Sectors64)
+            .item("128 Bytes", ewfargs::NumSectors::Sectors128)
+            .item("256 Bytes", ewfargs::NumSectors::Sectors256)
+            .item("512 Bytes", ewfargs::NumSectors::Sectors512)
+            .item("1 Kilobyte", ewfargs::NumSectors::Sectors1024)
+            .item("2 Kilobytes", ewfargs::NumSectors::Sectors2048)
+            .item("4 Kilobytes", ewfargs::NumSectors::Sectors4096)
+            .item("8 Kilobytes", ewfargs::NumSectors::Sectors8192)
+            .item("16 Kilobytes", ewfargs::NumSectors::Sectors16384)
+            .item("32 Kilobytes", ewfargs::NumSectors::Sectors32768)
+            .selected(ewfargs::NumSectors::default() as usize);
+
+        let bytes_per_sector = match args.bytes_per_sector {
+            Some(v) => Some(v.to_string()),
+            None => None,
+        };
+
+        ListView::new()
+            .child(
+                "Bytes per sector",
+                new_entry_box("Bytes per sector", 32, &bytes_per_sector, |s, _| {
+                    technical_options_next(s)
+                }),
+            )
+            .child("Sectors to read at once", num_sectors_select)
+    });
 
     s.add_layer(
-        Dialog::around(Panel::new(num_sectors_select).title("Bytes per Sector"))
-            .title("Required information")
+        Dialog::around(fields)
+            .title("Technical options")
             .button("Back", target_info)
             .button("Next", |_| ()),
     );
